@@ -1,0 +1,994 @@
+---
+title: "Diabetes probability based on behavioral, medical, demographic, and economic factors
+       MGT 6203: Data Analytics in Business – Team 29"
+author: Olivia Watson, Selda Kocaman, Kelly Cristina Ribeiro Yogue, Thu Thi Diem Le,
+  Hande Pehlivan
+date: "2023-04-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+#read the file
+R.Version() # using R version 4.2.2
+library(foreign)
+library(DataExplorer)
+library(DataExplorer)
+library(glmnet)
+library(tidyverse)
+library(Hmisc)
+library(pastecs)
+library(ggplot2)
+library(car)
+library(class)
+library(grid)
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(gridExtra)
+library(corrplot)
+library(caret)
+library(performance)
+library("readxl")
+library(RColorBrewer)
+library(dplyr)
+library(ROCR)
+library(e1071) 
+library(rpart)
+library(kknn)
+library(imbalance)
+library(caTools)
+
+```
+
+```{r cars}
+#please put LLCP2021.XPT file in the same directory as the currently running R script
+df <- read.xport("LLCP2021.XPT")
+#check column and row
+print(paste('number of column is',ncol(df)))
+print(paste('number of row',nrow(df)))
+
+
+
+#receive the data where 85% of not missing
+percent_non_missing <- function(t)
+{
+  mean(x = is.na(x = t)) < 0.15
+}
+
+df2<-Filter(f = percent_non_missing,
+            x = df)
+
+
+
+#check column and row
+print(paste('number of column is',ncol(df2)))
+print(paste('number of row',nrow(df2)))
+```
+
+```{r }
+#just get the row related to diabetes
+df3<- df2[which(df2$DIABETE4 %in% c('1','2','3','4')),]
+head(df3)
+
+#create target variables
+df3$DIABETES <- with(df3, ifelse(DIABETE4 =='2'| DIABETE4 =='3',0, 1))
+#check distinct value for DIABETE4
+table(df3$DIABETES)
+
+
+# there are same variables and they don't have importance,removing them and DIABETE4 since we have created new column
+df_new<-subset(df3, select = -c(IDATE,IMONTH,IDAY,IYEAR,SEQNO,FMONTH,DISPCODE,X_PSU,X_MISFRT1,X_MISVEG1,X_FRUITE1,
+                                X_FRTRES1,X_VEGRES1,X_VEGETE1,DIABETE4))
+
+head(df_new)
+
+
+#visualize the table
+# as we see plot is flagging 0.15 of data missing as bad
+plot_missing(df_new,
+             title='Diabetes Dataset Missing Data',
+             group=list("Excellent" = 0.0, "Good" = .06, "Ok" = .1, "Bad" = .15),
+             theme_config = list(legend.position = c("top")))
+
+
+#remove all rows with NA
+df_final<-df_new[complete.cases(df_new),]
+
+#re-check column and row
+print(paste('number of column is',ncol(df_final)))
+print(paste('number of row',nrow(df_final)))
+
+#re-visualize the table
+plot_missing(df_final,
+             title='Diabetes Dataset Missing Data',
+             group=list("Excellent" = 0.0, "Good" = .06, "Ok" = .1, "Bad" = .15),
+             theme_config = list(legend.position = c("top")))
+
+# check unique data types in the data frame
+unique(sapply(df_final, class))
+
+#all of them are numeric.Since we don't have any categorical variable, we don't need to exclude anything while scaling the data.
+#we want to see which variables are important based on lasso selection.
+
+scaled_df = as.data.frame(scale(df_final[,-124]))
+df_scaled <- cbind(scaled_df,df_final[,124]) 
+colnames(df_scaled)
+
+colnames(df_scaled)[124] <- "DIABETES"
+
+#recheck column names
+colnames(df_scaled)
+
+XP=data.matrix(df_scaled[,-124])
+YP=data.matrix(df_scaled$DIABETES)
+
+
+lasso=cv.glmnet(XP,YP,alpha=1,
+                nfolds = 5,type.measure="mse",family="gaussian")
+
+
+#Output the coefficients of the variables selected by lasso
+coef(lasso, s=lasso$lambda.min)
+
+
+# Run PCA on matrix of scaled predictors
+pca <- prcomp(df_final[,1:123], scale. = TRUE)
+summary(pca)
+
+
+#check screen
+screeplot(pca, type="lines",col="blue")
+
+var <- pca$sdev^2
+propvar <- var/sum(var)
+
+plot(propvar, xlab = "Principal Component", ylab = "Proportion of Variance Explained",ylim = c(0,1), type = "b")
+
+plot(cumsum(propvar), xlab = "Principal Component", ylab = "Cumulative Proportion of Variance Explained",
+     ylim = c(0,1), type = "b")
+
+# Creating a data frame of response variable and PCs
+PCDiabetes <- as.data.frame(cbind(pca$x, df_final[,124]))
+colnames(PCDiabetes)[124] <- "DIABETES"
+
+
+
+s<-cor(df_final)
+s
+
+#check index for diabetes
+grep("DIABETES", colnames(df_final))
+
+#convert data frame
+result<- round(s[,124],2)
+
+
+#based on 0.07  check positive and negative correlation
+first<-Filter(function(x) any(x > 0.07), result)
+
+p_correlation<-names(result)[sapply(result, function(x) min(x))>=0]
+p_correlation
+
+
+n_correlation<-names(result)[sapply(result, function(x) min(x))<0]
+n_correlation
+
+second<-Filter(function(x) any(x < -0.07 ), result[n_correlation])
+second
+
+
+
+
+```
+
+```{r}
+# combine the data with the variables that are correlated and use some of researches to identify important variables
+#use codebook to check the explanation of each variables
+# https://www.cdc.gov/pcd/issues/2019/19_0109.htm
+#https://www.cdc.gov/brfss/annual_data/2021/pdf/codebook21_llcp-v2-508.pdf
+#sex,CHCKDNY2 are added based on the research
+
+final_data<-subset(df_final, select = c(GENHLTH,EXERANY2,EMPLOY1,CHILDREN,ALCDAY5,X_PHYS14D,X_HCVU652,X_TOTINDA,X_RFHYPE6,X_RFCHOL3,X_AGEG5YR,
+                                        X_AGE65YR,X_AGE80,X_AGE_G,WTKG3,X_BMI5,X_BMI5CAT,X_RFBMI5,DRNKANY5,PHYSHLTH,CHECKUP1,BPHIGH6,CHOLCHK3,
+                                        TOLDHI3,CHOLMED3,CVDINFR4,CVDCRHD4,HAVARTH5,EDUCA,DIFFWALK,PNEUVAC4,QSTVER,X_MICHD,X_DRDXAR3,
+                                        X_LMTACT3,X_LMTWRK3,X_CHLDCNT,X_EDUCAG,X_INCOMG1,X_STATE,X_RACE,DIABETES,SEXVAR,CHCKDNY2))
+
+
+
+#re-check column and row
+print(paste('number of column is',ncol(final_data)))
+print(paste('number of row',nrow(final_data)))
+
+# identify the multicollinearity between the remaining variables
+cr<-cor(final_data)
+cr
+
+#check col names
+colnames(final_data)
+
+
+# find the correlation > 0.70
+
+for (i in 1:nrow(cr)){
+  correlations <-  which((cr[i,] > 0.70) & (cr[i,] != 1))
+  
+  if(length(correlations)> 0){
+    print(colnames(final_data)[i])
+    print(correlations)
+  }
+}
+
+# finally we picked the final variables based on the correlation and research
+# also we decided to eliminated the records where no answer,don't know or refused
+# individually checked all the variables distinct values
+
+
+library(tidyverse)
+final_data <- final_data %>%
+  filter(GENHLTH %in% c(1,2,3,4,5)) %>%
+  filter(X_TOTINDA %in% c(1,2)) %>% 
+  filter(EMPLOY1 %in% c(1,2,3,4,5,6,7,8)) %>%
+  filter(CHILDREN %in% c(1,2,3,4,5,6,7,8,9,10,11,12,14,15,16,17,20,23,82,83,88 )) %>%
+  filter(DRNKANY5 %in% c(1,2)) %>%
+  filter(X_HCVU652 %in% c(1,2)) %>%
+  filter(CHCKDNY2 %in% c(1,2)) %>%
+  filter(X_AGE_G %in% c(1,2,3,4,5,6)) %>%
+  filter(X_BMI5CAT %in% c(1,2,3,4)) %>%
+  filter(CHECKUP1 %in% c(1,2,3,4,8)) %>%
+  filter(BPHIGH6 %in% c(1,2,3,4)) %>%
+  filter(CHOLMED3 %in% c(1,2)) %>%
+  filter(HAVARTH5 %in% c(1,2)) %>%
+  filter(X_EDUCAG %in% c(1,2,3,4)) %>%
+  filter(DIFFWALK %in% c(1,2)) %>%
+  filter(PNEUVAC4 %in% c(1,2)) %>%
+  filter(X_MICHD %in% c(1,2)) %>%
+  filter(X_INCOMG1 %in% c(1,2,3,4,5,6,7)) %>%
+  filter(X_RACE %in% c(1,2,3,4,5,6,7,8)) 
+
+
+# transform children
+final_data$CHILDREN <- with(final_data, ifelse(CHILDREN ==88,0, 1))
+#check distinct value for CHILDREN
+table(final_data$CHILDREN)
+
+
+#create final table
+diabetes_data<-subset(final_data, 
+                      select = c(
+                        X_STATE,
+                        X_RACE,
+                        SEXVAR,
+                        GENHLTH,
+                        X_TOTINDA,
+                        EMPLOY1,
+                        CHILDREN ,
+                        DRNKANY5,
+                        X_HCVU652,
+                        CHCKDNY2,
+                        X_AGE_G,
+                        X_BMI5CAT,
+                        CHECKUP1,
+                        BPHIGH6,
+                        CHOLMED3,
+                        HAVARTH5,
+                        X_EDUCAG,
+                        DIFFWALK,
+                        PNEUVAC4,
+                        X_MICHD,
+                        X_INCOMG1,
+                        DIABETES))
+
+
+#re-check column and row
+print(paste('number of column is',ncol(diabetes_data)))
+print(paste('number of row',nrow(diabetes_data)))
+
+
+
+
+# rename columns
+colnames(diabetes_data)
+
+names(diabetes_data)[which(names(diabetes_data) == "X_STATE")] <- "STATE_code"
+names(diabetes_data)[which(names(diabetes_data) == "X_RACE")] <- "Race"
+names(diabetes_data)[which(names(diabetes_data) == "SEXVAR")] <- "Gender"
+names(diabetes_data)[which(names(diabetes_data) == "GENHLTH")] <- "GeneralHealth"
+names(diabetes_data)[which(names(diabetes_data) == "X_TOTINDA")] <- "PhysicalActivity"
+names(diabetes_data)[which(names(diabetes_data) == "EMPLOY1")] <- "Employment"
+names(diabetes_data)[which(names(diabetes_data) == "CHILDREN")] <- "Children"
+names(diabetes_data)[which(names(diabetes_data) == "DRNKANY5")] <- "Alcohol"
+names(diabetes_data)[which(names(diabetes_data) == "X_HCVU652")] <- "HealthInsurance"
+names(diabetes_data)[which(names(diabetes_data) == "CHCKDNY2")] <- "Kidney"
+names(diabetes_data)[which(names(diabetes_data) == "X_AGE_G")] <- "Age"
+names(diabetes_data)[which(names(diabetes_data) == "X_BMI5CAT")] <- "BMI"
+names(diabetes_data)[which(names(diabetes_data) == "CHECKUP1")] <- "RoutineCheckup"
+names(diabetes_data)[which(names(diabetes_data) == "BPHIGH6")] <- "BloodPressure"
+names(diabetes_data)[which(names(diabetes_data) == "CHOLMED3")] <- "Cholestero"
+names(diabetes_data)[which(names(diabetes_data) == "HAVARTH5")] <- "Arthritis"
+names(diabetes_data)[which(names(diabetes_data) == "X_EDUCAG")] <- "Education"
+names(diabetes_data)[which(names(diabetes_data) == "DIFFWALK")] <- "DifficultyWalking"
+names(diabetes_data)[which(names(diabetes_data) == "PNEUVAC4")] <- "Pneumonia"
+names(diabetes_data)[which(names(diabetes_data) == "X_MICHD")] <- "MI"
+names(diabetes_data)[which(names(diabetes_data) == "X_INCOMG1")] <- "Income"
+names(diabetes_data)[which(names(diabetes_data) == "DIABETES")] <- "Diabetes"
+```
+
+```{r }
+head(diabetes_data)
+describe(diabetes_data)
+stat.desc(diabetes_data)
+
+table(diabetes_data$Diabetes)
+tail(diabetes_data)
+
+coul <- brewer.pal(5, "Set2") 
+par(mfrow=c(2,2))
+counts <- table(diabetes_data$Diabetes,diabetes_data$STATE_code)
+barplot(counts, main="STATE_code vs Diabetes",xlab="STATE_code",ylab="Count", col=coul,
+        legend = rownames(counts))
+
+counts <- table(diabetes_data$Diabetes,diabetes_data$Race)
+barplot(counts, main="Race vs Diabetes",xlab="Race",ylab="Count", col=coul,
+        legend = rownames(counts))
+
+counts <- table(diabetes_data$Diabetes,diabetes_data$Gender)
+barplot(counts, main="Gender vs Diabetes",xlab="Gender",ylab="Count", col=coul,
+        legend = rownames(counts))
+
+counts <- table(diabetes_data$Diabetes,diabetes_data$GeneralHealth)
+barplot(counts, main="GeneralHealth vs Diabetes",xlab="GeneralHealth",ylab="Count", col=coul,
+        legend = rownames(counts))
+par(mfrow=c(2,2))
+counts <- table(diabetes_data$Diabetes,diabetes_data$PhysicalActivity)
+barplot(counts, main="PhysicalActivity vs Diabetes",xlab="PhysicalActivity",ylab="Count", col=coul,
+        legend = rownames(counts))
+
+counts <- table(diabetes_data$Diabetes,diabetes_data$Employment)
+barplot(counts, main="Employment vs Diabetes",xlab="Employment",ylab="Count", col=coul,
+        legend = rownames(counts))
+
+counts <- table(diabetes_data$Diabetes,diabetes_data$Children)
+barplot(counts, main="Children vs Diabetes",xlab="Children",ylab="Count", col=coul,
+        legend = rownames(counts))
+
+counts <- table(diabetes_data$Diabetes,diabetes_data$Alcohol)
+barplot(counts, main="Alcohol vs Diabetes",xlab="Alcohol",ylab="Count", col=coul,
+        legend = rownames(counts))
+par(mfrow=c(2,2))
+
+counts <- table(diabetes_data$Diabetes,diabetes_data$HealthInsurance)
+barplot(counts, main="HealthInsurance vs Diabetes",xlab="HealthInsurance",ylab="Count", col=coul,
+        legend = rownames(counts))
+counts <- table(diabetes_data$Diabetes,diabetes_data$Kidney)
+barplot(counts, main="Kidney vs Diabetes",xlab="Kidney",ylab="Count", col=coul,
+        legend = rownames(counts))
+
+counts <- table(diabetes_data$Diabetes,diabetes_data$Age)
+barplot(counts, main="Age vs Diabetes",xlab="Age",ylab="Count", col=coul,
+        legend = rownames(counts))
+
+counts <- table(diabetes_data$Diabetes,diabetes_data$BMI)
+barplot(counts, main="BMI vs Diabetes",xlab="BMI",ylab="Count", col=coul,
+        legend = rownames(counts))
+par(mfrow=c(2,2))
+
+counts <- table(diabetes_data$Diabetes,diabetes_data$RoutineCheckup)
+barplot(counts, main="RoutineCheckup vs Diabetes",xlab="RoutineCheckup",ylab="Count", col=coul,
+        legend = rownames(counts))
+
+counts <- table(diabetes_data$Diabetes,diabetes_data$BloodPressure)
+barplot(counts, main="BloodPressure vs Diabetes",xlab="BloodPressure",ylab="Count", col=coul,
+        legend = rownames(counts))
+
+counts <- table(diabetes_data$Diabetes,diabetes_data$Cholestero)
+barplot(counts, main="Cholestero vs Diabetes",xlab="Cholestero",ylab="Count", col=coul,
+        legend = rownames(counts))
+counts <- table(diabetes_data$Diabetes,diabetes_data$Arthritis)
+barplot(counts, main="Arthritis vs Diabetes",xlab="Arthritis",ylab="Count", col=coul,
+        legend = rownames(counts))
+par(mfrow=c(2,2))
+
+counts <- table(diabetes_data$Diabetes,diabetes_data$Education)
+barplot(counts, main="Education vs Diabetes",xlab="Education",ylab="Count", col=coul,
+        legend = rownames(counts))
+counts <- table(diabetes_data$Diabetes,diabetes_data$DifficultyWalking)
+barplot(counts, main="DifficultyWalking vs Diabetes",xlab="DifficultyWalking",ylab="Count", col=coul,
+        legend = rownames(counts))
+
+counts <- table(diabetes_data$Diabetes,diabetes_data$Pneumonia)
+barplot(counts, main="Pneumonia vs Diabetes",xlab="Pneumonia",ylab="Count", col=coul,
+        legend = rownames(counts))
+counts <- table(diabetes_data$Diabetes,diabetes_data$MI)
+barplot(counts, main="MI vs Diabetes",xlab="MI",ylab="Count", col=coul,
+        legend = rownames(counts))
+par(mfrow=c(2,1))
+
+counts <- table(diabetes_data$Diabetes,diabetes_data$Income)
+barplot(counts, main="Income vs Diabetes",xlab="Income",ylab="Count", col=coul,
+        legend = rownames(counts))
+
+#correlation plot
+corr <- cor(diabetes_data)
+corrplot(corr,method="circle")
+
+#box plot 
+attach(diabetes_data)
+par(mfrow=c(2,2))
+boxplot(STATE_code~Diabetes, main="STATE_code vs Diabetes",xlab="STATE_code",ylab="Diabetes", col=coul
+        )
+
+boxplot(Race~Diabetes, main="Race vs Diabetes",xlab="Race",ylab="Diabetes", col=coul
+        )
+
+boxplot(Gender~Diabetes, main="Gender vs Diabetes",xlab="Gender",ylab="Diabetes", col=coul
+       )
+
+boxplot(GeneralHealth~Diabetes, main="GeneralHealth vs Diabetes",xlab="GeneralHealth",ylab="Diabetes", col=coul
+        )
+par(mfrow=c(2,2))
+boxplot(PhysicalActivity~Diabetes, main="PhysicalActivity vs Diabetes",xlab="PhysicalActivity",ylab="Diabetes", col=coul
+        )
+
+boxplot(Employment~Diabetes, main="Employment vs Diabetes",xlab="Employment",ylab="Diabetes", col=coul
+      )
+
+boxplot(Children~Diabetes, main="Children vs Diabetes",xlab="Children",ylab="Diabetes", col=coul
+        )
+boxplot(Alcohol~Diabetes, main="Alcohol vs Diabetes",xlab="Alcohol",ylab="Diabetes", col=coul
+        )
+par(mfrow=c(2,2))
+
+boxplot(HealthInsurance~Diabetes, main="HealthInsurance vs Diabetes",xlab="HealthInsurance",ylab="Diabetes", col=coul
+        )
+
+boxplot(Kidney~Diabetes, main="Kidney vs Diabetes",xlab="Kidney",ylab="Diabetes", col=coul
+)
+boxplot(Age~Diabetes, main="Age vs Diabetes",xlab="Age",ylab="Diabetes", col=coul
+        )
+
+boxplot(BMI~Diabetes, main="BMI vs Diabetes",xlab="BMI",ylab="Diabetes", col=coul
+        )
+par(mfrow=c(2,2))
+
+boxplot(RoutineCheckup~Diabetes, main="RoutineCheckup vs Diabetes",xlab="RoutineCheckup",ylab="Diabetes", col=coul
+        )
+
+boxplot(BloodPressure~Diabetes, main="BloodPressure vs Diabetes",xlab="BloodPressure",ylab="Diabetes", col=coul
+       )
+
+boxplot(Cholestero~Diabetes, main="Cholestero vs Diabetes",xlab="Cholestero",ylab="Diabetes", col=coul)
+boxplot(Arthritis~Diabetes, main="Arthritis vs Diabetes",xlab="Arthritis",ylab="Diabetes", col=coul
+        )
+par(mfrow=c(2,2))
+
+boxplot(Education~Diabetes, main="Education vs Diabetes",xlab="Education",ylab="Diabetes", col=coul
+        )
+boxplot(DifficultyWalking~Diabetes, main="DifficultyWalking vs Diabetes",xlab="DifficultyWalking",ylab="Diabetes", col=coul
+       )
+
+boxplot(Pneumonia~Diabetes, main="Pneumonia vs Diabetes",xlab="Pneumonia",ylab="Diabetes", col=coul
+       )
+boxplot(MI~Diabetes, main="MI vs Diabetes",xlab="MI",ylab="Diabetes", col=coul
+        )
+par(mfrow=c(2,1))
+
+boxplot(Income~Diabetes, main="Income vs Diabetes",xlab="Income",ylab="Diabetes", col=coul)
+
+
+```
+
+```{r }
+
+# MERGE THE DATASETS
+Cost_of_living <- read_excel("Cost_of_living.xlsx")
+head(Cost_of_living)
+
+diabetes_data$Diabetes <- as.numeric(diabetes_data$Diabetes)
+
+#Group by state, calculates number of diabetes for each state. 
+
+state_diabetes <- diabetes_data %>%
+  group_by(STATE_code) %>%
+  summarise(total_diabetes = sum(Diabetes))
+
+
+
+# keep desired columns
+print(state_diabetes)
+
+merged_data <- merge(state_diabetes, Cost_of_living, by ="STATE_code")
+head(merged_data)
+
+#Population Data
+Population <- read.csv("Population.csv", header=TRUE)
+new_data <- Population[, c("state", "densityMi")]
+names(new_data)[which(names(new_data) == "state")] <- "State"
+merged_data2 <- merge(merged_data, new_data, by ="State")
+
+#Create the diabetes Ratio = Diabetes/Density
+merged_data2$Diabetes_Ratio <- (merged_data2$total_diabetes / merged_data2$densityMi)
+head(merged_data2)
+
+#Remove Alaska because it is outlier. 
+merged_data2 <- merged_data2[merged_data2$State != "Alaska",]
+
+
+ggplot(merged_data2, aes(x = Index, y = Diabetes_Ratio, label = State, size = Diabetes_Ratio, col = "red")) +
+  geom_point() +
+  #geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Diabetes Ratio vs Index",
+       x = "Index",
+       y = "Diabetes/Density") +
+  scale_size_continuous(range = c(1, 10)) +
+  theme_minimal() +
+  geom_text(position = position_nudge(y = 0.05), size = 3, vjust = -2) +
+  theme(plot.title = element_text(size = 15, face = "bold"),
+        panel.grid.major = element_line(color = "gray", linetype = "solid"),
+        panel.grid.minor = element_line(color = "gray", linetype = "solid"),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10))
+
+ggplot(merged_data2, aes(x = Utilities, y = Diabetes_Ratio, label = State, size = Diabetes_Ratio, col = "red")) +
+  geom_point() +
+  #geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Diabetes Ratio vs Utilities",
+       x = "Utilities",
+       y = "Diabetes/Density") +
+  scale_size_continuous(range = c(1, 10)) +
+  theme_minimal() +
+  geom_text(position = position_nudge(y = 0.05), size = 3, vjust = -2) +
+  theme(plot.title = element_text(size = 15, face = "bold"),
+        panel.grid.major = element_line(color = "gray", linetype = "solid"),
+        panel.grid.minor = element_line(color = "gray", linetype = "solid"),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10))
+
+
+ggplot(merged_data2, aes(x = Transportation, y = Diabetes_Ratio, label = State, size = Diabetes_Ratio, col = "red")) +
+  geom_point() +
+  #geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Diabetes Ratio vs Transportation",
+       x = "Transportation",
+       y = "Diabetes/Density") +
+  scale_size_continuous(range = c(1, 10)) +
+  theme_minimal() +
+  geom_text(position = position_nudge(y = 0.05), size = 3, vjust = -2) +
+  theme(plot.title = element_text(size = 15, face = "bold"),
+        panel.grid.major = element_line(color = "gray", linetype = "solid"),
+        panel.grid.minor = element_line(color = "gray", linetype = "solid"),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10))
+
+
+ggplot(merged_data2, aes(x = Housing, y = Diabetes_Ratio, label = State, size = Diabetes_Ratio, col = "red")) +
+  geom_point() +
+  #geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Diabetes Ratio vs Housing",
+       x = "Housing",
+       y = "Diabetes/Density") +
+  scale_size_continuous(range = c(1, 10)) +
+  theme_minimal() +
+  geom_text(position = position_nudge(y = 0.05), size = 3, vjust = -1.5) +
+  theme(plot.title = element_text(size = 15, face = "bold"),
+        panel.grid.major = element_line(color = "gray", linetype = "solid"),
+        panel.grid.minor = element_line(color = "gray", linetype = "solid"),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10))
+
+ggplot(merged_data2, aes(x = Grocery, y = Diabetes_Ratio, label = State, size = Diabetes_Ratio, col = "red")) +
+  geom_point() +
+  #geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Diabetes Ratio vs Grocery",
+       x = "Grocery",
+       y = "Diabetes/Density") +
+  scale_size_continuous(range = c(1, 10)) +
+  theme_minimal() +
+  geom_text(position = position_nudge(y = 0.05), size = 3, vjust = -1.5) +
+  theme(plot.title = element_text(size = 15, face = "bold"),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10))
+
+
+ggplot(merged_data2, aes(x = Health, y = Diabetes_Ratio, label = State, size = Diabetes_Ratio, col = "red")) +
+  geom_point() +
+  #geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Diabetes Ratio vs Health",
+       x = "Health",
+       y = "Diabetes/Density") +
+  scale_size_continuous(range = c(1, 10)) +
+  theme_minimal() +
+  geom_text(position = position_nudge(y = 0.05), size = 3, vjust = -1.5) +
+  theme(plot.title = element_text(size = 15, face = "bold"),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10))
+
+
+
+```
+
+
+
+```{r }
+
+diabetes<-diabetes_data
+
+
+set.seed(123)
+
+#split the dataset
+split = sample.split(diabetes_data$Diabetes, 
+                     SplitRatio = 0.80)
+diabetes_train = subset(diabetes_data, 
+                        split == TRUE)
+diabetes_test = subset(diabetes_data, 
+                       split == FALSE)
+
+#other models,tree and naive since doesn't require scaling,will use train and test dataset
+train<-diabetes_train
+test<-diabetes_test
+
+
+#Feature Scaling except target  for logistic regression and knn
+diabetes_train[-22] = scale(diabetes_train[-22])
+diabetes_test[-22] = scale(diabetes_test[-22])
+
+
+#for upsampling
+diabetes_train_up <- oversample(train, ratio = 0.8, method = "SMOTE",classAttr = "Diabetes")
+diabetes_test_up<-test
+
+
+#for other models create dataset,tree and naive since doesn't require scaling
+train_up<-diabetes_train_up
+test_up<-diabetes_test_up
+
+#scale for upsampling
+#Feature Scaling except target  for logistic regression and knn
+diabetes_train_up[-22] = scale(diabetes_train_up[-22])
+diabetes_test_up[-22] = scale(diabetes_test_up[-22])
+
+
+
+
+#Model 1 logistic regression
+logistic_model <- glm(Diabetes~.,data=diabetes_train,family="binomial")
+summary(logistic_model)
+
+#MI,Children,State Education is not significant. 
+
+#lest see how the model predicts on the test data-probabilities
+diabetes_test$prob<-predict(logistic_model, diabetes_test[,-22], type="response")
+
+
+#lets create the predicted class
+diabetes_test$predicted<-ifelse(diabetes_test$prob>=0.50,1,0)
+
+
+
+Confusion_mat<- caret::confusionMatrix(as.factor(diabetes_test$predicted), as.factor(diabetes_test$Diabetes),positive='1')
+Confusion_mat
+
+
+draw_confusion_matrix <- function(cm,title) {
+  
+  layout(matrix(c(1,1,2)))
+  par(mar=c(2,2,2,2))
+  plot(c(100, 345), c(300, 450), type = "n", xlab="", ylab="", xaxt='n', yaxt='n')
+  title(title, cex.main=2)
+  
+  # create the matrix 
+  rect(150, 430, 240, 370, col='#3F97D0')
+  text(195, 435, '0', cex=1.2)
+  rect(250, 430, 340, 370, col='#F7AD50')
+  text(295, 435, '1', cex=1.2)
+  text(125, 370, 'Predicted', cex=1.3, srt=90, font=2)
+  text(245, 450, 'Actual', cex=1.3, font=2)
+  rect(150, 305, 240, 365, col='#F7AD50')
+  rect(250, 305, 340, 365, col='#3F97D0')
+  text(140, 400, '0', cex=1.2, srt=90)
+  text(140, 335, '1', cex=1.2, srt=90)
+  
+  # add in the cm results 
+  res <- as.numeric(cm$table)
+  text(195, 400, res[1], cex=1.6, font=2, col='white')
+  text(195, 335, res[2], cex=1.6, font=2, col='white')
+  text(295, 400, res[3], cex=1.6, font=2, col='white')
+  text(295, 335, res[4], cex=1.6, font=2, col='white')
+  
+  # add in the specifics 
+  plot(c(100, 0), c(100, 0), type = "n", xlab="", ylab="", main = "DETAILS", xaxt='n', yaxt='n')
+  text(10, 85, names(cm$byClass[1]), cex=1.2, font=2)
+  text(10, 70, round(as.numeric(cm$byClass[1]), 3), cex=1.2)
+  text(30, 85, names(cm$byClass[2]), cex=1.2, font=2)
+  text(30, 70, round(as.numeric(cm$byClass[2]), 3), cex=1.2)
+  text(50, 85, names(cm$byClass[5]), cex=1.2, font=2)
+  text(50, 70, round(as.numeric(cm$byClass[5]), 3), cex=1.2)
+  text(70, 85, names(cm$byClass[6]), cex=1.2, font=2)
+  text(70, 70, round(as.numeric(cm$byClass[6]), 3), cex=1.2)
+  text(90, 85, names(cm$byClass[7]), cex=1.2, font=2)
+  text(90, 70, round(as.numeric(cm$byClass[7]), 3), cex=1.2)
+  
+  # add in the accuracy information 
+  text(30, 35, names(cm$overall[1]), cex=1.5, font=2)
+  text(30, 20, round(as.numeric(cm$overall[1]), 3), cex=1.4)
+  text(70, 35, names(cm$overall[2]), cex=1.5, font=2)
+  text(70, 20, round(as.numeric(cm$overall[2]), 3), cex=1.4)
+} 
+
+draw_confusion_matrix(Confusion_mat,'Logistic Confusion Matrix')
+
+
+
+class(diabetes_test$prob)
+class(diabetes_test$Diabetes)
+
+
+predicts <- prediction(as.numeric(diabetes_test$prob),as.factor(diabetes_test$Diabetes))
+
+roc <- performance(predicts,"tpr", "fpr")
+plot(roc,main="ROC curve for GLM model")
+auc_ROCR <- performance(predicts, measure = "auc")
+auc_ROCR <- auc_ROCR@y.values[[1]]
+print(paste("AUC value for logistic regression: ",auc_ROCR))
+
+
+#run second model KNN
+#extract 22 column of train dataset because we will use it as 'cl' argument in knn function.
+target_category <- diabetes_train[,'Diabetes']
+
+
+#extract 22th column if test dataset to measure the accuracy
+test_category <- diabetes_test[,'Diabetes']
+
+
+library(kknn)
+library(class)
+#lets run knn function
+# getting k=317 since approach is to get square root of observations
+pred <- knn(diabetes_train,diabetes_test[1:22],cl=target_category,k=317)
+head(pred)
+
+
+
+library(caret)
+knn_Confusion_mat<- caret::confusionMatrix(as.factor(pred), as.factor(diabetes_test$Diabetes),positive='1')
+knn_Confusion_mat
+
+draw_confusion_matrix(knn_Confusion_mat,'KNN Confusion Matrix')
+
+
+#show AUC for KNN
+knn_predicts <- prediction(as.numeric(pred),as.numeric(diabetes_test$Diabetes))
+roc <- performance(knn_predicts,"tpr", "fpr")
+plot(roc,main="ROC curve for KNN model")
+auc_ROCR_knn <- performance(knn_predicts, measure = "auc")
+auc_ROCR_knn <- auc_ROCR_knn@y.values[[1]]
+print(paste("AUC value for KNN Classification: ",auc_ROCR_knn))
+
+
+
+
+#run Model3 Tree model
+
+library(rpart)
+
+library(rpart.plot) 
+
+# build tree model
+tree_model <- rpart(Diabetes ~ ., data = train, method = "class", control = rpart.control(cp = 0))
+
+#https://www.statology.org/classification-and-regression-trees-in-r/
+#view results
+printcp(tree_model)
+
+#identify best cp value to use
+best <- tree_model$cptable[which.min(tree_model$cptable[,"xerror"]),"CP"]
+
+#produce a pruned tree based on the best cp value
+pruned_tree <- prune(tree_model, cp=best)
+
+#plot the pruned tree
+prp(pruned_tree,
+    faclen=0, 
+    extra=1,
+    roundint=F,
+    digits=5) 
+
+
+# Make predictions on the test data
+tree_pred <- predict(pruned_tree, test, type = "class")
+
+
+tree_Confusion_mat<- caret::confusionMatrix(as.factor(tree_pred), as.factor(test$Diabetes),positive='1')
+tree_Confusion_mat
+
+draw_confusion_matrix(tree_Confusion_mat,'Tree Confusion Matrix')
+
+#show AUC
+treepredict <- prediction(as.numeric(tree_pred),as.numeric(test$Diabetes))
+roc <- performance(treepredict,"tpr", "fpr")
+plot(roc,main="ROC curve for GLM model")
+tree_auc_ROCR <- performance(treepredict, measure = "auc")
+tree_auc_ROCR <- tree_auc_ROCR@y.values[[1]]
+print(paste("AUC value for Tree Classification: ",tree_auc_ROCR))
+
+
+
+#Model 4 Naive Bayes
+
+library(e1071) 
+naive_model = naiveBayes(Diabetes ~., data = train)
+summary(naive_model)
+
+# predicting target 
+nbc_pred <- test[1:21]
+dim(nbc_pred)
+
+naive_pred <- predict(naive_model, test)
+
+
+naive_Confusion_mat<- caret::confusionMatrix(as.factor(naive_pred), as.factor(test$Diabetes),positive='1')
+naive_Confusion_mat
+
+draw_confusion_matrix(naive_Confusion_mat,'Naive Bayes Confusion Matrix')
+
+#show AUC
+naivepredict <- prediction(as.numeric(naive_pred),as.numeric(test$Diabetes))
+roc <- performance(naivepredict,"tpr", "fpr")
+plot(roc,main="ROC curve for GLM model")
+naive_auc_ROCR <- performance(naivepredict, measure = "auc")
+naive_auc_ROCR <- naive_auc_ROCR@y.values[[1]]
+print(paste("AUC value for Naive Bayes Classification: ",naive_auc_ROCR))
+
+#summary
+
+draw_confusion_matrix(Confusion_mat,'Logistic Confusion Matrix')
+print(paste("AUC value for logistic regression: ",round(auc_ROCR,3)))
+
+draw_confusion_matrix(knn_Confusion_mat,'KNN Confusion Matrix')
+print(paste("AUC value for KNN Classification: ",round(auc_ROCR_knn,3)))
+
+
+
+draw_confusion_matrix(tree_Confusion_mat,'Tree Confusion Matrix')
+print(paste("AUC value for Tree Classification: ",round(tree_auc_ROCR,3)))
+
+
+draw_confusion_matrix(naive_Confusion_mat,'Naive Bayes Confusion Matrix')
+print(paste("AUC value for Naive Bayes Classification: ",round(naive_auc_ROCR,3)))
+
+#########################################################################################
+#Now lets ran the models with upsampling data
+
+#Model 1 logistic regression upsampling
+logistic_model_up <- glm(Diabetes~.,data=diabetes_train_up,family="binomial")
+summary(logistic_model_up)
+
+#MI,Children,State Education is not significant. 
+
+#lest see how the model predicts on the test data-probabilities
+diabetes_test_up$prob<-predict(logistic_model_up, diabetes_test_up[,-22], type="response")
+
+
+#lets create the predicted class
+diabetes_test_up$predicted<-ifelse(diabetes_test_up$prob>=0.50,1,0)
+
+
+
+Up_Confusion_mat<- caret::confusionMatrix(as.factor(diabetes_test_up$predicted), as.factor(diabetes_test_up$Diabetes),positive='1')
+Up_Confusion_mat
+
+
+
+draw_confusion_matrix(Up_Confusion_mat,'Upsampling Logistic Confusion Matrix')
+
+predicts_up <- prediction(as.numeric(diabetes_test_up$prob),as.numeric(diabetes_test_up$Diabetes))
+roc <- performance(predicts_up,"tpr", "fpr")
+plot(roc,main="ROC curve for GLM model")
+auc_ROCR_up <- performance(predicts_up, measure = "auc")
+auc_ROCR_up <- auc_ROCR_up@y.values[[1]]
+print(paste("AUC value for upsampling logistic regression: ",auc_ROCR_up))
+
+
+
+#run model 2 KNN Upsampling
+#extract 22 column of train dataset because we will use it as 'cl' argument in knn function.
+target_category_up <- diabetes_train_up[,'Diabetes']
+
+
+#extract 22th column if test dataset to measure the accuracy
+test_category_up <- diabetes_test_up[,'Diabetes']
+
+
+#lets run knn function
+# getting k=317 since approach is to get square root of observations
+pred_up <- knn(diabetes_train_up,diabetes_test_up[1:22],cl=target_category_up,k=317)
+
+
+knn_Confusion_mat_up<- caret::confusionMatrix(as.factor(pred_up), as.factor(diabetes_test_up$Diabetes),positive='1')
+knn_Confusion_mat_up
+
+
+draw_confusion_matrix(knn_Confusion_mat_up,'Upsampling KNN  Confusion Matrix')
+
+
+#show AUC for KNN
+knn_predicts_up <- prediction(as.numeric(pred_up),as.numeric(diabetes_test_up$Diabetes))
+roc <- performance(knn_predicts_up,"tpr", "fpr")
+plot(roc,main="ROC curve for KNN model")
+auc_ROCR_knn_up <- performance(knn_predicts_up, measure = "auc")
+auc_ROCR_knn_up <- auc_ROCR_knn_up@y.values[[1]]
+print(paste("AUC value for KNN Classification: ",auc_ROCR_knn_up))
+
+
+
+#build 3.model
+# build tree model
+tree_model_up <- rpart(Diabetes ~ ., data = train_up, method = "class", control = rpart.control(cp = 0))
+
+#show important variables
+varImp(tree_model_up,surrogates = FALSE, competes = FALSE)
+
+# Make predictions on the test data
+tree_pred_up <- predict(tree_model_up, test_up, type = "class")
+
+
+tree_Confusion_mat_up<- caret::confusionMatrix(as.factor(tree_pred_up), as.factor(test_up$Diabetes),positive='1')
+tree_Confusion_mat_up
+
+draw_confusion_matrix(tree_Confusion_mat_up,'Upsampling Tree Confusion Matrix')
+
+#show AUC
+treepredict_up <- prediction(as.numeric(tree_pred_up),as.numeric(test_up$Diabetes))
+roc <- performance(treepredict_up,"tpr", "fpr")
+plot(roc,main="ROC curve for GLM model")
+tree_auc_ROCR_up <- performance(treepredict_up, measure = "auc")
+tree_auc_ROCR_up <- tree_auc_ROCR_up@y.values[[1]]
+print(paste("AUC value for Upsampling Tree Classification: ",tree_auc_ROCR_up))
+
+
+#Model 4 Naive Bayes
+library(e1071) 
+naive_model_up = naiveBayes(Diabetes ~., data = train_up)
+summary(naive_model_up)
+
+# predicting target 
+nbc_pred_up <- test_up[1:21]
+dim(nbc_pred_up)
+
+naive_pred_up <- predict(naive_model_up, test_up)
+
+
+naive_Confusion_mat_up<- caret::confusionMatrix(as.factor(naive_pred_up), as.factor(test_up$Diabetes),positive='1')
+naive_Confusion_mat_up
+
+draw_confusion_matrix(naive_Confusion_mat_up,'Upsampling Naive Bayes Confusion Matrix')
+
+#show AUC
+naivepredict_up <- prediction(as.numeric(naive_pred_up),as.numeric(test_up$Diabetes))
+roc <- performance(naivepredict_up,"tpr", "fpr")
+plot(roc,main="ROC curve for GLM model")
+naive_auc_ROCR_up <- performance(naivepredict_up, measure = "auc")
+naive_auc_ROCR_up <- naive_auc_ROCR_up@y.values[[1]]
+print(paste("AUC value for Upsampling Naive Bayes Classification: ",naive_auc_ROCR_up))
+
+
+
+
+#summary for upsampling
+draw_confusion_matrix(Up_Confusion_mat,'Upsampling Logistic Confusion Matrix')
+print(paste("AUC value for Upsamling logistic regression: ",round(auc_ROCR_up,3)))
+
+
+draw_confusion_matrix(knn_Confusion_mat_up,'Upsampling KNN Confusion Matrix')
+print(paste("AUC value for Upsampling KNN Classification: ",round(auc_ROCR_knn_up,3)))
+
+
+draw_confusion_matrix(tree_Confusion_mat_up,'Upsampling Tree Confusion Matrix')
+print(paste("AUC value for Upsampling Tree Classification: ",round(tree_auc_ROCR_up,3)))
+
+
+draw_confusion_matrix(naive_Confusion_mat_up,' Upsampling Naive Bayes Confusion Matrix')
+print(paste("AUC value for Upsampling Naive Bayes Classification: ",round(naive_auc_ROCR_up,3)))
+
+```
