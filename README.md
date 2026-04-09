@@ -8,7 +8,7 @@ This repository contains a data science analysis identifying the demographic, be
 
 ## Research Question & Public Health Significance
 
-**Why does this matter?** Type II diabetes is a leading cause of preventable mortality and morbidity in the United States, with prevalence rising across demographic groups. The CDC estimates that one in four healthcare dollars in the U.S. is spent on diabetes care, yet we lack clear, evidence-based understanding of which behavioral modifications and demographic risk factors are most predictive of diabetes status in real-world populations. This analysis addresses that gap by using large-scale federal surveillance data to identify the strongest independent predictors of diabetes at the population level—work that directly informs public health campaigns, resource allocation, and equity-focused interventions. Understanding these relationships from representative survey data is essential for translating research findings into actionable guidance.
+**Why does this matter?** Type II diabetes is a leading cause of preventable mortality and morbidity in the United States, with prevalence rising across demographic groups. The CDC estimates that one in four healthcare dollars in the U.S. is spent on diabetes care, yet we lack clear, evidence based understanding of which behavioral modifications and demographic risk factors are most predictive of diabetes status in real world populations. This analysis addresses that gap by using large scale federal surveillance data to identify the strongest independent predictors of diabetes at the population level—work that directly informs public health campaigns, resource allocation, and equity focused interventions. Understanding these relationships from representative survey data is essential for translating research findings into actionable guidance.
 
 ---
 
@@ -25,7 +25,7 @@ This repository contains a data science analysis identifying the demographic, be
 - **Socioeconomic:** Education level, annual household income, health insurance status
 - **Geographic Context:** State of residence, state-level cost of living index
 
-All variables were derived from the BRFSS questionnaire (XPT format) and cross-referenced with public Census population data and cost-of-living indices to enable contextual analysis.
+All variables were derived from the BRFSS questionnaire (XPT format) and cross referenced with public Census population data and cost-of-living indices to enable contextual analysis.
 
 ---
 
@@ -39,13 +39,13 @@ All variables were derived from the BRFSS questionnaire (XPT format) and cross-r
 - **Feature selection:** Applied LASSO regularization (α=1, cross-validated lambda) to eliminate multicollinearity and rank variable importance
 
 ### Model Comparison & Performance
-Evaluated four classification algorithms on held-out test set:
+Evaluated four classification algorithms on held out test set:
 1. **Logistic Regression** – Interpretable baseline with probability estimates
-2. **K-Nearest Neighbors (K=317)** – Nonparametric density-based approach
-3. **Decision Tree (pruned)** – Rule-based model for feature interactions
+2. **K-Nearest Neighbors (K=317)** – Nonparametric density based approach
+3. **Decision Tree (pruned)** – Rule based model for feature interactions
 4. **Naïve Bayes** – Baseline generative model
 
-**Performance Metrics:** Accuracy, sensitivity, specificity, precision, and ROC-AUC scores computed for each model. Logistic regression and KNN showed lowest false negative rates and highest recall, making them most useful for identifying at-risk individuals.
+**Performance Metrics:** Accuracy, sensitivity, specificity, precision, and ROC-AUC scores computed for each model. Logistic regression and KNN showed lowest false negative rates and highest recall, making them most useful for identifying at risk individuals.
 
 ---
 
@@ -85,7 +85,7 @@ To reproduce: Download BRFSS XPT file from CDC, place in working directory, and 
 
 ---
 
-## Interpretation for Non-Technical Audiences
+## Summary
 
-This analysis identifies which factors are most linked to diabetes in real Americans. The strongest findings—BMI, physical inactivity, and high blood pressure—are actionable targets for public health messaging: Americans in higher BMI categories, those not meeting physical activity guidelines, and those with hypertension represent the highest-risk populations. The income finding warrants further investigation (likely a data artifact), but the core behavioral and physiological predictors are clear and consistent with clinical knowledge.
+This analysis identifies which factors are most linked to diabetes in real Americans. The strongest findings BMI, physical inactivity, and high blood pressure are actionable targets for public health messaging: Americans in higher BMI categories, those not meeting physical activity guidelines, and those with hypertension represent the highest risk populations. The income finding warrants further investigation (likely a data artifact), but the core behavioral and physiological predictors are clear and consistent with clinical knowledge.
 
