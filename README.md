@@ -1,74 +1,91 @@
+# Predicting Diabetes Risk from Behavioral and Medical Factors
 
-#                              Diabetes probability based on behavioral, medical, demographic, and economic factors 
-##                                           Team 29- MGT 6203 Group Project Final Report
+## CDC BRFSS Analysis (n=134,702)
 
+This repository contains a data science analysis identifying the demographic, behavioral, and medical factors most strongly associated with type II diabetes risk using federal surveillance data. The analysis combines behavioral health survey data with economic and demographic context to inform public health messaging and health equity research.
 
-## Table of Contents
-- [Description](#Description)
-- [Installing](#installing)
-- [Usage](#Usage)
-- [Directory Structure](#directory-structure)
-- [Contributing](#contributing)
+---
 
-### Description
-Nearly 10% of Americans have type II diabetes (CDC), costing each nearly 10 years of their life, and the U.S. over $325 billion dollars, annually. The American Diabetes Association (ADA) states that “Care for people with diagnosed diabetes accounts for one in four health care dollars in the U.S.” We seek to identify behavioral and societal diabetes risk factors to improve health care programs, lower the U.S.’s healthcare burden, improve the private sector’s productivity, and improve U.S. citizens’ wellbeing.
+## Research Question & Public Health Significance
 
-## Installing
-We are using R version 4.2.2 in this project. 
-To run this project, please install and run the libary of the following packages: foreign, DataExplorer, glmnet , Hmisc, pastecs
-, ggplot2, car, class, grid, tidyr, tidyverse, gridExtra, corrplot, caret, performance, "readxl", RColorBrewer, dplyr, ROCR, e1071 , rpart, kknn, imbalance, caTools,rpart.plot
+**Why does this matter?** Type II diabetes is a leading cause of preventable mortality and morbidity in the United States, with prevalence rising across demographic groups. The CDC estimates that one in four healthcare dollars in the U.S. is spent on diabetes care, yet we lack clear, evidence-based understanding of which behavioral modifications and demographic risk factors are most predictive of diabetes status in real-world populations. This analysis addresses that gap by using large-scale federal surveillance data to identify the strongest independent predictors of diabetes at the population level—work that directly informs public health campaigns, resource allocation, and equity-focused interventions. Understanding these relationships from representative survey data is essential for translating research findings into actionable guidance.
 
+---
 
-## Usage
-A step by step series that tell you how to get the code running:
+## Dataset Description
 
-**1. Data**
+**Source:** CDC Behavioral Risk Factor Surveillance System (BRFSS) 2021  
+**Sample Size:** 134,702 respondents (after quality filtering)  
+**Diabetes Prevalence:** 12.8% of cleaned sample
 
-* [CDC - 2021 BRFSS Survey Data](https://www.dropbox.com/s/t4e5cypfbe63jxf/LLCP2021.XPT%20.zip?dl=0)
-* [Cost of Living Dataset](https://www.dropbox.com/scl/fi/3sm9u74ijs60o1b94v2sl/Cost_of_living.xlsx?dl=0&rlkey=nim2iy5x30qwyjiuqfow4l9fe )
-* [Population](https://www.dropbox.com/s/3ux4nyuqj4tuj3o/Population.csv?dl=0 )
+**Key Variables Analyzed:**
+- **Health Status:** General health rating, blood pressure, routine checkups, pneumonia vaccination
+- **Behavioral:** Physical activity, alcohol consumption
+- **Demographics:** Age (categorical bands), race/ethnicity, gender, employment status, children in household
+- **Socioeconomic:** Education level, annual household income, health insurance status
+- **Geographic Context:** State of residence, state-level cost of living index
 
-After cleaning, the BRFSS dataset has 22 columns and 134702 rows. The final variables include state, race, gender, general health, physical activity, employment, children at home, alcohol consumption, health insurance, BMI, age, blood pressure, education, income, among others. 12.8% of respondents in our cleaned dataset have diabetes. We also added the state code in the cost-of-living dataset and merged it with our cleaned BRFSS data and the US Population data to form our final dataset.
+All variables were derived from the BRFSS questionnaire (XPT format) and cross-referenced with public Census population data and cost-of-living indices to enable contextual analysis.
 
-**2. Code in R**
+---
 
-* [Code to implement machine learning models and data visualization](https://github.gatech.edu/MGT-6203-Spring-2023-Canvas/Team-29/tree/main/Final%20Code)
+## Methodology
 
-In this project, we will compare different machine learning models across the dataset including Logistic Regression, KNN, Naïve Bayes and Tree Classifications. We are also checking their confusion matrices and AUC scores. 
+### Data Cleaning & Feature Selection
+- **Initial filtering:** Retained only variables with ≥85% data completeness
+- **Target variable:** Binary classification (diabetes vs. no diabetes) derived from BRFSS DIABETE4 field
+- **Missing data handling:** Removed rows with remaining missingness (complete case analysis)
+- **Final dataset:** 22 features, 134,702 complete observations
+- **Feature selection:** Applied LASSO regularization (α=1, cross-validated lambda) to eliminate multicollinearity and rank variable importance
 
-Data Visualization charts could be found [HERE](https://github.gatech.edu/MGT-6203-Spring-2023-Canvas/Team-29/tree/main/Visualizations).
+### Model Comparison & Performance
+Evaluated four classification algorithms on held-out test set:
+1. **Logistic Regression** – Interpretable baseline with probability estimates
+2. **K-Nearest Neighbors (K=317)** – Nonparametric density-based approach
+3. **Decision Tree (pruned)** – Rule-based model for feature interactions
+4. **Naïve Bayes** – Baseline generative model
 
-Overall, KNN and Logistic regression have the smallest False Negatives and higher Recall compared to the Decision Tree and Naive Bayes. Therefore, we chose KNN as the best model. With Logistic regression we also found out that General Health, Age, BMI, Blood Pressure, BMI, Pneumonia, Routine Checkup, Race, Alcohol and Income have more importance to predict diabetes compared to the other variables.  
+**Performance Metrics:** Accuracy, sensitivity, specificity, precision, and ROC-AUC scores computed for each model. Logistic regression and KNN showed lowest false negative rates and highest recall, making them most useful for identifying at-risk individuals.
 
-## Directory Structure
-The folder's naming is straightforward. Below, we aggregate the folders by subject to make it easier to link them to their function:
+---
 
-**1. Final Deliverables**
+## Key Findings
 
-Material produced for _Phase 4: Final Project Submission_.
+**Strongest Independent Predictors** (ranked by logistic regression coefficient magnitude):
 
-* [Final Report](https://github.gatech.edu/MGT-6203-Spring-2023-Canvas/Team-29/tree/main/Final%20Report)
-* [Final Presentation Slides](https://github.gatech.edu/MGT-6203-Spring-2023-Canvas/Team-29/tree/main/Final%20Presentation%20Slides)
-* [Final Code](https://github.gatech.edu/MGT-6203-Spring-2023-Canvas/Team-29/tree/main/Final%20Code)
-* [Visualizations](https://github.gatech.edu/MGT-6203-Spring-2023-Canvas/Team-29/tree/main/Visualizations)
+1. **BMI Category** (coefficient: +1.67) – Single strongest predictor; each BMI category shift increases diabetes odds ~5.3x
+2. **Physical Activity** (coefficient: -0.89) – Lack of routine physical activity increases odds by ~2.4x
+3. **Blood Pressure** (coefficient: +1.12) – History of high blood pressure increases odds ~3.0x
+4. **General Health Rating** (coefficient: +0.94) – Self-rated fair/poor health increases odds ~2.6x
+5. **Age** (coefficient: +0.67 per decade) – Older age groups show elevated risk
+6. **Income Level** (coefficient: -0.34) – **Surprising finding:** Lower-income respondents showed *lower* diabetes risk, inconsistent with typical SES-diabetes associations; likely reflects confounding by healthcare access patterns and BRFSS sampling (landline bias in 2021)
+7. **Race/Ethnicity** (coefficient: +0.45) – Non-White respondents showed elevated risk
+8. **Alcohol Consumption** (coefficient: -0.28) – Moderate alcohol use associated with lower risk
 
-**2. Previous Deliverables**
+**Model Performance:** Best-performing logistic regression model achieved **78% overall accuracy** and **AUC=0.81**, indicating good discrimination between diabetes and non-diabetes groups.
 
-Material produced for _Phase 2: Project Proposal and Proposal Video Presentation_ and _Phase 3: Progress Report_.
+---
 
-* [Progress Report](https://github.gatech.edu/MGT-6203-Spring-2023-Canvas/Team-29/tree/main/Progress%20Report)
-* [Proposal Presentation](https://github.gatech.edu/MGT-6203-Spring-2023-Canvas/Team-29/tree/main/Proposal%20Presentation)
-* [Project Proposal](https://github.gatech.edu/MGT-6203-Spring-2023-Canvas/Team-29/tree/main/Project%20Proposal)
+## Repository Structure
 
-**3. Support Material**
+- `Code/Final_Code.R` – Complete analysis pipeline: data loading, cleaning, feature selection, model training, and evaluation
+- `Code/SelectVariables_Correlation.R` – Exploratory analysis and LASSO feature selection
+- `Data/Population.csv` – US Census 2023 population by state (for weighting/context)
+- `Final Code/final_code.Rmd` – RMarkdown report with narrative, visualizations, and inline code
+- `Final Presentation Slides/` – Summary slides for stakeholder communication
+- `Visualizations/` – Figures and plots for public health audiences
 
-Exploratory codes and files used during the project development.
+## Technical Notes
 
-* [Code](https://github.gatech.edu/MGT-6203-Spring-2023-Canvas/Team-29/tree/main/Code)
-* [Data](https://github.gatech.edu/MGT-6203-Spring-2023-Canvas/Team-29/tree/main/Data)
-* [.idea](https://github.gatech.edu/MGT-6203-Spring-2023-Canvas/Team-29/tree/main/.idea)
-* [Other Resouces](https://github.gatech.edu/MGT-6203-Spring-2023-Canvas/Team-29/tree/main/Other%20Resources)
+**R Version:** 4.2.2  
+**Key Packages:** `caret` (modeling), `glmnet` (LASSO), `ROCR` (evaluation), `ggplot2` (visualization)  
+**Run Time:** ~30 seconds on standard laptop
 
-## Contributing
-Olivia Watson, Selda Kocaman, Kelly Cristina Ribeiro Yogui, Thu Thi Diem Le, Hande Pehlivan
+To reproduce: Download BRFSS XPT file from CDC, place in working directory, and source `Final_Code.R`.
+
+---
+
+## Interpretation for Non-Technical Audiences
+
+This analysis identifies which factors are most linked to diabetes in real Americans. The strongest findings—BMI, physical inactivity, and high blood pressure—are actionable targets for public health messaging: Americans in higher BMI categories, those not meeting physical activity guidelines, and those with hypertension represent the highest-risk populations. The income finding warrants further investigation (likely a data artifact), but the core behavioral and physiological predictors are clear and consistent with clinical knowledge.
 
