@@ -1,8 +1,7 @@
 ---
 title: "Diabetes probability based on behavioral, medical, demographic, and economic factors
-       MGT 6203: Data Analytics in Business – Team 29"
-author: Olivia Watson, Selda Kocaman, Kelly Cristina Ribeiro Yogue, Thu Thi Diem Le,
-  Hande Pehlivan
+       MGT 6203: Data Analytics in Business"
+author: Hande Pehlivan
 date: "2023-04-11"
 output: html_document
 ---
